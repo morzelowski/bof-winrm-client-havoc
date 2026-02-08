@@ -1,17 +1,44 @@
-# BOF WinRM client
-Cobalt Strike BOF that implements a WinRM shell client using Windows APIs.
+# BOF WinRM Client for Havoc C2
 
-Example:
+This is a port of the [FalconForceTeam/bof-winrm-client](https://github.com/FalconForceTeam/bof-winrm-client) to Havoc C2. 
+It implements a WinRM shell client using Windows APIs via a Beacon Object File (BOF).
+
+## Features
+
+*   Executes commands on remote systems via WinRM using BOF.
+*   Supports `x64` architecture.
+*   Implements timeout handling (30s) to prevent beacon hanging on unreachable hosts.
+
+## Build
+
+To compile the BOF (requires `x86_64-w64-mingw32-g++`):
+
+```bash
+cd bof-winrm-client
+make
+```
+
+This will generate `bof.x64.o` in the project root.
+
+## Usage
+
+1.  Load the `bof-winrm-client.py` script into Havoc.
+2.  Run the command from the Havoc console:
 
 ```
-beacon> winrm-client --host ws2 --cmd "whoami"
-
-[+] host called home, sent: 6787 bytes
-[+] received output:
-thedomain\user1
+winrm-client --host <hostname> --cmd <command>
 ```
-Blog post: https://falconforce.nl/exploring-winrm-plugins-for-lateral-movement
 
-References:
-- Microsoft official documentation about WinRM API headers: https://learn.microsoft.com/en-us/windows/win32/api/_winrm/#enumerations
-- Microsoft WinRM client shell example: https://github.com/microsoft/Windows-classic-samples/tree/main/Samples/Win7Samples/sysmgmt/winrm
+**Example:**
+
+```
+winrm-client --host ws.mini.lab --cmd "whoami /all"
+```
+
+## Credits
+
+*   Original Author: [FalconForceTeam](https://github.com/FalconForceTeam/bof-winrm-client)
+
+## License
+
+This project is licensed under the BSD 3-Clause License - see the [LICENSE](LICENSE) file for details.

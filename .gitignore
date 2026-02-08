@@ -365,3 +365,4 @@ FodyWeavers.xsd
 
 # mine
 systems.txt
+*.o

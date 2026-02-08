@@ -1,11 +1,17 @@
-#include <Windows.h>
+#include <windows.h>
 #define WSMAN_API_VERSION_1_0
 #include <wsman.h>
-#include "base\helpers.h"
+#include "base/helpers.h"
 
+#ifndef __in
+#define __in
+#endif
+#ifndef __in_opt
+#define __in_opt
+#endif
 
 #ifdef _DEBUG
-#include "base\mock.h"
+#include "base/mock.h"
 #undef DECLSPEC_IMPORT
 #define DECLSPEC_IMPORT
 #endif
@@ -134,16 +140,17 @@ VOID debugOut(const PCHAR format, ...) {
                 return;
             }
 
-            HANDLE hPipeRead = { 0 };
-            HANDLE hPipeWrite = { 0 };
-            BOOL ret;
+        HANDLE hPipeRead = { 0 };
+        HANDLE hPipeWrite = { 0 };
+        DWORD t_BufferWriteLength = 0;
+        DWORD bytesRead = 0;
+        BOOL ret;
             ret = CreatePipe(&hPipeRead, &hPipeWrite, NULL, bufferLength);
             if (ret == ERROR) {
                 BeaconPrintf(CALLBACK_ERROR, "error CreatePipe: %d\n", GetLastError());
                 goto cleanCallback;
             }
 
-            DWORD t_BufferWriteLength = 0;
             ret = WriteFile(hPipeWrite,
                 data->streamData.binaryData.data,
                 bufferLength,
@@ -154,7 +161,6 @@ VOID debugOut(const PCHAR format, ...) {
                 goto cleanCallback;
             }
 
-            DWORD bytesRead = 0;
             ret = ReadFile(hPipeRead, buffer, bufferLength, &bytesRead, FALSE);
             if (ret == ERROR) {
                 BeaconPrintf(CALLBACK_ERROR, "error ReadFile: %d\n", GetLastError());
@@ -200,6 +206,9 @@ VOID debugOut(const PCHAR format, ...) {
         ctxCallback ctxCreateShell = { 0 };
         ctxCallback ctxReceiveShell = { 0 };
         WSMAN_AUTHENTICATION_CREDENTIALS serverAuthenticationCredentials = { 0 };
+        WSMAN_SESSION_HANDLE hSession = { 0 };
+        PCWSTR connection = hostname;
+        PCWSTR commandLine = cmd;
 
         DWORD ret;
         ret = WSManInitialize(WSMAN_FLAG_REQUESTED_API_VERSION_1_0, &hApi);
@@ -215,8 +224,8 @@ VOID debugOut(const PCHAR format, ...) {
         serverAuthenticationCredentials.userAccount.password = L"password";
 #endif
 
-        PCWSTR connection = hostname;
-        WSMAN_SESSION_HANDLE hSession = { 0 };
+        // PCWSTR connection = hostname; - moved to top
+        // WSMAN_SESSION_HANDLE hSession = { 0 }; - moved to top
         ret = WSManCreateSession(hApi, connection, 0, &serverAuthenticationCredentials, NULL, &hSession);
         if (ret != NO_ERROR) {
             BeaconPrintf(CALLBACK_ERROR, "error WSManCreateSesdsion: %ld\n", ret);
@@ -234,16 +243,22 @@ VOID debugOut(const PCHAR format, ...) {
         wsAsync.completionFunction = &WSManShellCompletionFunction;
 
         WSManCreateShell(hSession, 0, WSMAN_CMDSHELL_URI, NULL, NULL, NULL, &wsAsync, &hShell);
-        WaitForSingleObject(hEventShellCompl, INFINITE);
+        if (WaitForSingleObject(hEventShellCompl, 30000) == WAIT_TIMEOUT) {
+             BeaconPrintf(CALLBACK_ERROR, "error WSManCreateShell: timed out\n");
+             goto closeSession;
+        }
         if (ctxCreateShell.hadError) {
             BeaconPrintf(CALLBACK_ERROR, "error in WSManCreateShell callback\n");
             goto closeShell;
         }
         DEBUG("success WSManCreateShell\n");
 
-        PCWSTR commandLine = cmd;
+        // PCWSTR commandLine = cmd; - moved to top
         WSManRunShellCommand(hShell, 0, commandLine, NULL, NULL, &wsAsync, &hCmd);
-        WaitForSingleObject(hEventShellCompl, INFINITE);
+        if (WaitForSingleObject(hEventShellCompl, 30000) == WAIT_TIMEOUT) {
+             BeaconPrintf(CALLBACK_ERROR, "error WSManRunShellCommand: timed out\n");
+             goto closeShell;
+        }
         if (ctxCreateShell.hadError) {
             BeaconPrintf(CALLBACK_ERROR, "error in WSManRunShellCommand callback\n");
             goto closeCommand;
@@ -260,7 +275,10 @@ VOID debugOut(const PCHAR format, ...) {
         wsAsyncShell.completionFunction = &ReceiveCallback;
 
         WSManReceiveShellOutput(hShell, hCmd, 0, NULL, &wsAsyncShell, &receiveOperation);
-        WaitForSingleObject(hEventReceive, INFINITE);
+        if (WaitForSingleObject(hEventReceive, 30000) == WAIT_TIMEOUT) {
+             BeaconPrintf(CALLBACK_ERROR, "error WSManReceiveShellOutput: timed out\n");
+             goto closeCommand;
+        }
         if (ctxReceiveShell.hadError) {
             BeaconPrintf(CALLBACK_ERROR, "error in WSManReceiveShellOutput callback\n");
             goto closeOperation;
@@ -276,12 +294,12 @@ VOID debugOut(const PCHAR format, ...) {
 
         closeCommand:
         WSManCloseCommand(hCmd, 0, &wsAsync);
-        WaitForSingleObject(hEventShellCompl, INFINITE);
+        WaitForSingleObject(hEventShellCompl, 5000);
         DEBUG("success WSManCloseCommand\n");
 
         closeShell:
         WSManCloseShell(hShell, 0, &wsAsync);
-        WaitForSingleObject(hEventShellCompl, INFINITE);
+        WaitForSingleObject(hEventShellCompl, 5000);
         DEBUG("success WSManCloseShell\n");
 
         closeSession:
